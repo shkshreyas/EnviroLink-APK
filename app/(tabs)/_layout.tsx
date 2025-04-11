@@ -3,7 +3,7 @@ import { Tabs } from 'expo-router';
 import { Platform, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  Home, Book, User, BarChart3
+  Home, Book, User, BarChart3, Play
 } from 'lucide-react-native';
 import { useTheme } from '@/context/theme';
 import Animated, { 
@@ -15,8 +15,15 @@ import Animated, {
   Easing
 } from 'react-native-reanimated';
 
+// Define types for the AnimatedTabBarIcon props
+interface AnimatedTabBarIconProps {
+  isFocused: boolean;
+  icon: React.ElementType;
+  color: string;
+}
+
 // Custom animated tab bar icon
-function AnimatedTabBarIcon({ isFocused, icon: Icon, color }) {
+function AnimatedTabBarIcon({ isFocused, icon: Icon, color }: AnimatedTabBarIconProps) {
   const scale = useSharedValue(1);
   
   const animatedStyle = useAnimatedStyle(() => {
@@ -103,6 +110,16 @@ export default function TabLayout() {
           title: 'Energy',
           tabBarIcon: ({ color, focused }) => (
             <AnimatedTabBarIcon isFocused={focused} icon={BarChart3} color={color} />
+          ),
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name="learning"
+        options={{
+          title: 'Learning',
+          tabBarIcon: ({ color, focused }) => (
+            <AnimatedTabBarIcon isFocused={focused} icon={Play} color={color} />
           ),
           headerShown: false,
         }}
