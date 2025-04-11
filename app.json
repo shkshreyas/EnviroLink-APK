@@ -45,7 +45,7 @@
       "package": "com.envirolink.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#0F172A"
+        "backgroundColor": "#167B68"
       },
       "permissions": [
         "INTERNET"

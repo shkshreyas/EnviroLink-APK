@@ -31,6 +31,8 @@ import {
   RefreshCw,
   BarChart3,
   PieChart,
+  Camera,
+  Leaf,
 } from 'lucide-react-native';
 import { 
   fetchDailyEnergyData, 
@@ -42,6 +44,7 @@ import {
   DailyEnergyData
 } from '@/lib/energy/api';
 import { generateEnergyInsights } from '@/lib/energy/energyInsights';
+import CameraSustainabilityAnalysis from '@/components/energy/CameraSustainabilityAnalysis';
 
 // Use dynamic dimensions for better responsiveness
 const initialDimensions = Dimensions.get('window');
@@ -56,6 +59,7 @@ export default function EnergyDetailsScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
+  const [cameraModalVisible, setCameraModalVisible] = useState(false);
   
   // Animation values with enhanced effects
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -413,6 +417,12 @@ export default function EnergyDetailsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Camera Sustainability Analysis Modal */}
+      <CameraSustainabilityAnalysis
+        visible={cameraModalVisible}
+        onClose={() => setCameraModalVisible(false)}
+      />
+      
       {/* Enhanced Header with Gradient */}
       <LinearGradient
         colors={isDark ? ['#1E3A8A', '#3B82F6'] : ['#3B82F6', '#60A5FA']}
@@ -569,6 +579,48 @@ export default function EnergyDetailsScreen() {
                 </View>
               </LinearGradient>
             </TouchableOpacity>
+            
+            {/* Camera Sustainability Analysis Button - Make more prominent */}
+            <Animated.View style={[
+              styles.cameraButtonContainer,
+              { 
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }] 
+              }
+            ]}>
+              <TouchableOpacity 
+                style={styles.cameraButton}
+                onPress={() => setCameraModalVisible(true)}
+              >
+                <LinearGradient
+                  colors={isDark ? ['#065F46', '#10B981'] : ['#059669', '#34D399']}
+                  style={styles.cameraGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <View style={styles.cameraContent}>
+                    <View style={styles.cameraIconContainer}>
+                      <Camera size={28} color="#FFFFFF" />
+                    </View>
+                    <View style={styles.cameraTextContainer}>
+                      <Text style={styles.cameraTitle}>
+                        Sustainability Scanner
+                      </Text>
+                      <Text style={styles.cameraSubtitle}>
+                        AI analysis of objects & environments
+                      </Text>
+                    </View>
+                  </View>
+                </LinearGradient>
+                <Animated.View style={[
+                  styles.pulseDot,
+                  { 
+                    transform: [{ scale: pulseAnim }],
+                    backgroundColor: '#10B981'
+                  }
+                ]} />
+              </TouchableOpacity>
+            </Animated.View>
           </Animated.View>
 
           {/* Rest of your components... */}
@@ -664,8 +716,8 @@ export default function EnergyDetailsScreen() {
               <View style={styles.hourlyChartHeader}>
                 <Text style={[styles.hourlyChartTitle, { color: colors.text }]}>Today's Usage by Hour</Text>
                 <View style={styles.liveIndicatorContainer}>
-                  <View style={styles.liveDot} />
-                  <Text style={[styles.liveText, { color: colors.secondaryText }]}>Today</Text>
+                  <View style={styles.liveIndicatorDot} />
+                  <Text style={[styles.liveIndicatorText, { color: colors.secondaryText }]}>Today</Text>
                 </View>
               </View>
               
@@ -924,16 +976,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   liveDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#10B981',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#22C55E',
     marginRight: 6,
   },
   liveText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#065F46',
+    fontWeight: '500',
+    color: '#22C55E',
   },
   scrollView: {
     paddingBottom: 40,
@@ -1124,16 +1176,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  liveDot: {
+  liveIndicatorDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: '#22C55E',
     marginRight: 6,
   },
-  liveText: {
+  liveIndicatorText: {
     fontSize: 12,
     fontWeight: '500',
+    color: '#22C55E',
   },
   hourlyChartBody: {
     flexDirection: 'row',
@@ -1389,5 +1442,66 @@ const styles = StyleSheet.create({
   impactLabel: {
     fontSize: 14,
     color: '#6B7280',
+  },
+  cameraButtonContainer: {
+    borderRadius: 16,
+    marginHorizontal: 20,
+    marginBottom: 24,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  cameraButton: {
+    flex: 1,
+    padding: 20,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  cameraGradient: {
+    flex: 1,
+    borderRadius: 16,
+  },
+  cameraContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cameraIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  cameraTextContainer: {
+    flex: 1,
+  },
+  cameraTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 8,
+  },
+  cameraSubtitle: {
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
+  pulseDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#FFFFFF',
+    position: 'absolute',
+    top: 10,
+    right: 10,
   },
 });
