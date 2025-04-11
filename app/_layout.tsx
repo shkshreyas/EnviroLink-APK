@@ -10,6 +10,9 @@ import Animated, {
   useSharedValue, 
   useAnimatedStyle, 
   withTiming, 
+  withRepeat,
+  withDelay,
+  withSequence,
   Easing
 } from 'react-native-reanimated';
 
@@ -18,14 +21,20 @@ SplashScreen.preventAutoHideAsync().catch((err) =>
   console.warn('Error preventing splash screen auto hide:', err)
 );
 
-// Simplified splash component with minimal animations for better performance
+// Enhanced splash component with more reliable animations for better persistence
 function CustomSplash() {
   const opacity = useSharedValue(0);
+  const scale = useSharedValue(0.95);
+  const rotation = useSharedValue(0);
   
   // Logo animation
   const logoAnimatedStyle = useAnimatedStyle(() => {
     return {
       opacity: opacity.value,
+      transform: [
+        { scale: scale.value },
+        { rotate: `${rotation.value}deg` }
+      ]
     };
   });
   
@@ -38,9 +47,24 @@ function CustomSplash() {
   });
 
   useEffect(() => {
-    // Simple fade-in animations
-    opacity.value = withTiming(1, { duration: 500 });
-    textOpacity.value = withTiming(1, { duration: 500, easing: Easing.ease });
+    // More robust animations with longer durations to ensure they complete
+    opacity.value = withTiming(1, { duration: 800 });
+    scale.value = withTiming(1, { duration: 800 });
+    rotation.value = withRepeat(
+      withSequence(
+        withTiming(-5, { duration: 1000 }),
+        withTiming(5, { duration: 1000 }),
+        withTiming(0, { duration: 500 })
+      ), 
+      -1, // infinite repeats
+      true // reverse
+    );
+    
+    // Delayed text fade in
+    textOpacity.value = withDelay(300, withTiming(1, { 
+      duration: 800, 
+      easing: Easing.bezier(0.25, 0.1, 0.25, 1) 
+    }));
   }, []);
 
   return (
@@ -124,7 +148,7 @@ function CustomSplash() {
 // Dynamic status bar that changes with theme
 function ThemedStatusBar() {
   const { colors } = useTheme();
-  return <StatusBar style={colors.statusBar} />;
+  return <StatusBar style={colors.statusBar as 'light' | 'dark' | 'auto'} />;
 }
 
 // Route guard component to handle protected routes
@@ -143,8 +167,8 @@ function RootLayoutNav() {
         try {
           await SplashScreen.hideAsync();
           console.log('Splash screen hidden');
-          // Shorter delay for transition
-          setTimeout(() => setSplashVisible(false), 50);
+          // Longer delay for transition to ensure animations complete
+          setTimeout(() => setSplashVisible(false), 500);
         } catch (e) {
           console.warn('Error hiding splash screen:', e);
           setSplashVisible(false);

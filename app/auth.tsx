@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,15 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/auth';
 import { Leaf, X } from 'lucide-react-native';
 import { checkNetworkConnectivity } from '@/lib/network';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withTiming, 
+  withRepeat,
+  withSequence,
+  Easing,
+  withDelay
+} from 'react-native-reanimated';
 
 export default function AuthScreen() {
   const [email, setEmail] = useState('');
@@ -28,9 +37,54 @@ export default function AuthScreen() {
   const [error, setError] = useState<string | null>(null);
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  
+  // Animation values
+  const logoScale = useSharedValue(0.95);
+  const logoOpacity = useSharedValue(0);
+  const rotation = useSharedValue(0);
+  const textOpacity = useSharedValue(0);
 
   const { signIn, signUp, resetPassword } = useAuth();
   const router = useRouter();
+
+  // Logo animation styles
+  const logoAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: logoOpacity.value,
+      transform: [
+        { scale: logoScale.value },
+        { rotate: `${rotation.value}deg` }
+      ]
+    };
+  });
+
+  // Text animation style
+  const textAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: textOpacity.value,
+    };
+  });
+
+  // Start animations when component mounts
+  useEffect(() => {
+    logoOpacity.value = withTiming(1, { duration: 800 });
+    logoScale.value = withTiming(1, { duration: 800 });
+    rotation.value = withRepeat(
+      withSequence(
+        withTiming(-5, { duration: 1000 }),
+        withTiming(5, { duration: 1000 }),
+        withTiming(0, { duration: 500 })
+      ), 
+      -1, // infinite repeats
+      true // reverse
+    );
+    
+    // Delayed text fade in
+    textOpacity.value = withDelay(300, withTiming(1, { 
+      duration: 800, 
+      easing: Easing.bezier(0.25, 0.1, 0.25, 1) 
+    }));
+  }, []);
 
   const handleAuth = async () => {
     if (!email || !password) {
@@ -151,15 +205,49 @@ export default function AuthScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.logoContainer}>
-          <View style={styles.logoBackground}>
-            <Leaf size={40} color="#FFFFFF" />
-          </View>
-          <Text style={styles.appTitle}>EnviroLink 2.0</Text>
-          <Text style={styles.appSubtitle}>Environmental Action Platform</Text>
+          <Animated.View style={[styles.logoBackground, logoAnimatedStyle]}>
+            <View style={{
+              position: 'absolute',
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              top: 20,
+              left: 20
+            }} />
+            <View style={{
+              position: 'absolute',
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              backgroundColor: 'rgba(96, 165, 250, 0.8)',
+              top: 16,
+              left: 26
+            }} />
+            <View style={{
+              position: 'absolute',
+              width: 25,
+              height: 25,
+              borderRadius: 12.5,
+              backgroundColor: 'rgba(16, 185, 129, 0.7)',
+              top: 30,
+              left: 28
+            }} />
+          </Animated.View>
+          <Animated.Text style={[styles.appTitle, textAnimatedStyle]}>
+            EnviroLink
+          </Animated.Text>
+          <Animated.Text style={[styles.appSubtitle, textAnimatedStyle]}>
+            Connect with Sustainable Solutions
+          </Animated.Text>
         </View>
 
         <View style={styles.formContainer}>
