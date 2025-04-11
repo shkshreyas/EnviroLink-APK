@@ -1,0 +1,65 @@
+{
+  "expo": {
+    "name": "EnviroLink",
+    "slug": "EnviroLink",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "envirolink",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.envirolink.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-splash-screen"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "tsconfigPaths": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "geminiApiKey": "AIzaSyDLhgDvA7MkNsNYk7P4_NCgmtVPoxnY1eQ",
+      "supabaseUrl": "https://anueydhidrzfpdoxfijb.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFudWV5ZGhpZHJ6ZnBkb3hmaWpiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM4NDExMDYsImV4cCI6MjA1OTQxNzEwNn0.l1FsMgR0ReBC8Qnmi7BckI0mMOaVdFy-WnwfaAf_xts",
+      "eas": {
+        "projectId": "3d73a621-81e5-4839-91d0-59444350edcd"
+      }
+    },
+    "android": {
+      "package": "com.envirolink.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#0F172A"
+      },
+      "permissions": [
+        "INTERNET"
+      ]
+    },
+    "assetBundlePatterns": [
+      "assets/images/*"
+    ],
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "owner": "shkshreyas"
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "cli": {
+    "version": ">= 5.9.1",
+    "requireCommit": true
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "channel": "development"
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease",
+        "image": "latest",
+        "withoutCredentials": true,
+        "env": {
+          "ANDROID_NDK_HOME": "/opt/android/ndk/23.1.7779620"
+        }
+      },
+      "channel": "preview",
+      "env": {
+        "APP_VARIANT": "minified"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "channel": "production"
+    },
+    "minisized": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease",
+        "image": "latest",
+        "withoutCredentials": true
+      },
+      "env": {
+        "APP_VARIANT": "minified",
+        "EAS_NO_VCS": "1"
+      },
+      "channel": "minisized"
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+} 
