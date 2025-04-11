@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,53 +7,48 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Dimensions,
+  Modal,
+  Animated,
+  Platform,
+  SafeAreaView,
+  StatusBar,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/auth';
 import { useTheme } from '@/context/theme';
-import { BarChart } from 'react-native-chart-kit';
-import { fetchEnergyReadings } from '@/lib/supabase';
-import { ArrowLeft, Calendar, TrendingDown, TrendingUp, Clock, Zap } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { 
+  ArrowLeft, 
+  Calendar, 
+  TrendingDown, 
+  TrendingUp, 
+  Clock, 
+  Zap, 
+  ChevronRight,
+  Lightbulb, 
+  X,
+  RefreshCw,
+  BarChart3,
+  PieChart,
+} from 'lucide-react-native';
+import { 
+  fetchDailyEnergyData, 
+  fetchWeeklyEnergyData, 
+  fetchEnergyBreakdown, 
+  fetchRealTimeEnergy,
+  getAIEnergyInsights,
+  UsageBreakdown,
+  DailyEnergyData
+} from '@/lib/energy/api';
+import { generateEnergyInsights } from '@/lib/energy/energyInsights';
 
-const screenWidth = Dimensions.get('window').width;
+// Use dynamic dimensions for better responsiveness
+const initialDimensions = Dimensions.get('window');
+const screenWidth = initialDimensions.width;
+const screenHeight = initialDimensions.height;
 
-// Generate realistic energy consumption patterns
-const generateDailyConsumptionPattern = () => {
-  // Base consumption ranges (in kWh) for different times of day
-  const morningBase = 2 + Math.random() * 3; // 2-5 kWh
-  const middayBase = 4 + Math.random() * 3;  // 4-7 kWh
-  const eveningPeak = 6 + Math.random() * 4; // 6-10 kWh
-  const nightBase = 1 + Math.random() * 2;   // 1-3 kWh
-
-  // Generate 24-hour data (hourly readings)
-  return Array(24).fill(0).map((_, hour) => {
-    // Early morning (midnight to 6am)
-    if (hour < 6) {
-      return nightBase * (0.8 + Math.random() * 0.4); // Some variation
-    }
-    // Morning (6am to 11am)
-    else if (hour < 11) {
-      return morningBase * (0.9 + Math.random() * 0.6); // Rising consumption
-    }
-    // Midday (11am to 5pm)
-    else if (hour < 17) {
-      return middayBase * (0.9 + Math.random() * 0.3); // Stable higher consumption
-    }
-    // Evening peak (5pm to 10pm)
-    else if (hour < 22) {
-      return eveningPeak * (0.9 + Math.random() * 0.2); // Highest consumption
-    }
-    // Late night (10pm to midnight)
-    else {
-      return nightBase * (1 + Math.random() * 0.5); // Declining toward night base
-    }
-  });
-};
-
-// Generate data for a full week
-const generateWeeklyConsumptionData = () => {
-  return Array(7).fill(0).map(() => generateDailyConsumptionPattern());
-};
+// Generate daily consumption pattern is now replaced with our API
 
 export default function EnergyDetailsScreen() {
   const { user } = useAuth();
@@ -62,8 +57,21 @@ export default function EnergyDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
   
-  // Initial realistic data
-  const [weeklyConsumptionData, setWeeklyConsumptionData] = useState(generateWeeklyConsumptionData());
+  // Animation values with enhanced effects
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(-50)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  
+  // Get current window dimensions for responsive design
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  
+  // State for real-time data
+  const [weeklyData, setWeeklyData] = useState<DailyEnergyData[]>([]);
+  const [insightsModalVisible, setInsightsModalVisible] = useState(false);
+  const [aiInsights, setAiInsights] = useState<string | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
   
   // Current day's hourly data
   const [hourlyData, setHourlyData] = useState({
@@ -86,11 +94,11 @@ export default function EnergyDetailsScreen() {
     ],
   });
   
-  const [usageBreakdown, setUsageBreakdown] = useState([
-    { category: 'Lighting', percentage: 28, color: '#22C55E' },
-    { category: 'Heating', percentage: 35, color: '#F59E0B' },
-    { category: 'Appliances', percentage: 20, color: '#3B82F6' },
-    { category: 'Other', percentage: 17, color: '#8B5CF6' },
+  const [usageBreakdown, setUsageBreakdown] = useState<UsageBreakdown[]>([
+    { category: 'Lighting', percentage: 28, value: 28 * 0.1, color: '#22C55E' },
+    { category: 'Heating', percentage: 35, value: 35 * 0.1, color: '#F59E0B' },
+    { category: 'Appliances', percentage: 20, value: 20 * 0.1, color: '#3B82F6' },
+    { category: 'Other', percentage: 17, value: 17 * 0.1, color: '#EC4899' }
   ]);
   
   const [statistics, setStatistics] = useState({
@@ -104,20 +112,41 @@ export default function EnergyDetailsScreen() {
 
   // Add animated CO2 counter simulation
   const [animatedCO2, setAnimatedCO2] = useState(statistics.co2Saved);
+  const [realTimeUsage, setRealTimeUsage] = useState(0);
   
-  // Process the current hourly data based on the current day
-  const updateHourlyData = () => {
-    const todayIndex = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
-    const todayData = weeklyConsumptionData[todayIndex];
+  // Get AI insights using Gemini API
+  const handleGetInsights = async () => {
+    if (weeklyData.length === 0) return;
+    
+    setInsightsLoading(true);
+    setInsightsModalVisible(true);
+    
+    try {
+      // Use the new Gemini API integration
+      const insights = await generateEnergyInsights(weeklyData);
+      setAiInsights(insights);
+    } catch (error) {
+      console.error('Error getting AI insights:', error);
+      setAiInsights('Unable to generate insights at this time. Please try again later.');
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+  
+  // Process the current hourly data based on the current day's data
+  const updateHourlyData = (todayData: DailyEnergyData) => {
+    if (!todayData || !todayData.hourly_readings) return;
     
     // Create the 6-point display format from 24 hour data
+    const hourReadings = todayData.hourly_readings;
+    
     const condensedData = [
-      todayData.slice(0, 4).reduce((a, b) => a + b, 0) / 4, // 12am-4am average
-      todayData.slice(4, 8).reduce((a, b) => a + b, 0) / 4, // 4am-8am average
-      todayData.slice(8, 12).reduce((a, b) => a + b, 0) / 4, // 8am-12pm average
-      todayData.slice(12, 16).reduce((a, b) => a + b, 0) / 4, // 12pm-4pm average
-      todayData.slice(16, 20).reduce((a, b) => a + b, 0) / 4, // 4pm-8pm average
-      todayData.slice(20, 24).reduce((a, b) => a + b, 0) / 4, // 8pm-12am average
+      hourReadings.slice(0, 4).reduce((a, b) => a + b.value, 0) / 4, // 12am-4am average
+      hourReadings.slice(4, 8).reduce((a, b) => a + b.value, 0) / 4, // 4am-8am average
+      hourReadings.slice(8, 12).reduce((a, b) => a + b.value, 0) / 4, // 8am-12pm average
+      hourReadings.slice(12, 16).reduce((a, b) => a + b.value, 0) / 4, // 12pm-4pm average
+      hourReadings.slice(16, 20).reduce((a, b) => a + b.value, 0) / 4, // 4pm-8pm average
+      hourReadings.slice(20, 24).reduce((a, b) => a + b.value, 0) / 4, // 8pm-12am average
     ];
     
     setHourlyData({
@@ -131,35 +160,56 @@ export default function EnergyDetailsScreen() {
     });
   };
   
-  // Process weekly data
-  const updateWeeklyData = () => {
-    // Calculate daily totals from hourly data
-    const dailyTotals = weeklyConsumptionData.map(day => 
-      day.reduce((total, hourly) => total + hourly, 0)
-    );
+  // Process weekly data from API
+  const updateWeeklyData = (weekData: DailyEnergyData[]) => {
+    if (!weekData || weekData.length === 0) return;
     
-    setEnergyData({
-      labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-      datasets: [
-        {
-          data: dailyTotals,
-        },
-      ],
+    // Calculate daily totals
+    const dailyTotals = weekData.map(day => day.total_consumption);
+    
+    // Determine appropriate labels
+    const labels = weekData.map(day => {
+      const date = new Date(day.date);
+      return date.toLocaleDateString('en-US', { weekday: 'short' });
     });
     
-    // Update statistics based on the new data
+    setEnergyData({
+      labels,
+      datasets: [{ data: dailyTotals }],
+    });
+    
+    // Update statistics based on the API data
     const totalConsumption = dailyTotals.reduce((total, daily) => total + daily, 0);
-    const averageDaily = totalConsumption / 7;
+    const averageDaily = totalConsumption / weekData.length;
     const estimatedMonthly = averageDaily * 30;
+    
+    // Find peak time from the entire week
+    const allPeakTimes = weekData.map(day => day.peak_time);
+    const peakTimeFrequency = allPeakTimes.reduce((acc, time) => {
+      acc[time] = (acc[time] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    // Get the most frequent peak time
+    let mostFrequentPeakTime = allPeakTimes[0];
+    let highestFrequency = 0;
+    
+    Object.entries(peakTimeFrequency).forEach(([time, frequency]) => {
+      if (frequency > highestFrequency) {
+        highestFrequency = frequency;
+        mostFrequentPeakTime = time;
+      }
+    });
     
     setStatistics(prev => ({
       ...prev,
       averageDaily: Math.round(averageDaily),
       totalMonthly: Math.round(estimatedMonthly),
-      trend: Math.round((averageDaily - prev.averageDaily) / prev.averageDaily * 100),
+      peakTime: mostFrequentPeakTime,
+      trend: Math.round((averageDaily - prev.averageDaily) / prev.averageDaily * 100) || 0,
     }));
   };
-  
+
   useEffect(() => {
     // Simulate animated CO2 counter
     let direction = 1;
@@ -180,84 +230,93 @@ export default function EnergyDetailsScreen() {
     loadEnergyData();
   }, [period]);
 
-  // Effect for updating hourly data
+  // Effect for real-time updates
   useEffect(() => {
-    updateHourlyData();
-    updateWeeklyData();
-    
-    // Set initial loading to false
-    setLoading(false);
-  }, [weeklyConsumptionData]);
-
-  // Simulate real-time data updates
-  useEffect(() => {
-    // Simulate real-time energy monitoring by updating data every few seconds
-    const interval = setInterval(() => {
-      if (!loading) {
-        // Apply small random changes to simulate fluctuating consumption
-        const updatedWeeklyData = [...weeklyConsumptionData];
-        
-        // Today's index (0 = Monday, 6 = Sunday)
-        const todayIndex = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
-        
-        // Current hour
-        const currentHour = new Date().getHours();
-        
-        // Update current hour with some variation
-        updatedWeeklyData[todayIndex][currentHour] += (Math.random() > 0.5 ? 1 : -1) * Math.random() * 0.5;
-        
-        // Ensure all values are positive
-        updatedWeeklyData[todayIndex] = updatedWeeklyData[todayIndex].map(val => Math.max(0.1, val));
-        
-        setWeeklyConsumptionData(updatedWeeklyData);
+    // Fetch real-time usage every 10 seconds
+    const interval = setInterval(async () => {
+      try {
+        const realTimeData = await fetchRealTimeEnergy();
+        setRealTimeUsage(realTimeData.value);
+      } catch (error) {
+        console.error('Error fetching real-time energy:', error);
       }
-    }, 5000); // Update every 5 seconds
+    }, 10000);
     
-    return () => clearInterval(interval);
-  }, [loading, weeklyConsumptionData]);
-
-  // Periodically generate completely new pattern (once per minute)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Occasionally update the usage breakdown to simulate changing appliance usage
-      const newBreakdown = [
-        { category: 'Lighting', percentage: 25 + Math.floor(Math.random() * 10), color: '#22C55E' },
-        { category: 'Heating', percentage: 30 + Math.floor(Math.random() * 10), color: '#F59E0B' },
-        { category: 'Appliances', percentage: 15 + Math.floor(Math.random() * 10), color: '#3B82F6' },
-      ];
-      
-      // Calculate "Other" to make sure the total is 100%
-      const otherPercentage = 100 - newBreakdown.reduce((sum, item) => sum + item.percentage, 0);
-      newBreakdown.push({ category: 'Other', percentage: otherPercentage, color: '#8B5CF6' });
-      
-      setUsageBreakdown(newBreakdown);
-    }, 60000); // Once per minute
+    // Initial fetch
+    fetchRealTimeEnergy()
+      .then(data => setRealTimeUsage(data.value))
+      .catch(err => console.error('Error fetching initial real-time energy:', err));
     
     return () => clearInterval(interval);
   }, []);
 
+  // Load energy data from API
   const loadEnergyData = async () => {
     setLoading(true);
     try {
-      // In a real app, this would fetch data from Supabase
-      // For this simulation, we'll generate new data
+      // Get the appropriate start date for the selected period
+      const today = new Date();
+      let startDate = new Date();
       
-      // Create more variation for the selected period
       if (period === 'day') {
-        // Focus on today's data with more detail
-        const todayIndex = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
-        const updatedWeeklyData = [...weeklyConsumptionData];
-        updatedWeeklyData[todayIndex] = generateDailyConsumptionPattern();
-        setWeeklyConsumptionData(updatedWeeklyData);
+        // Just use today for 'day' view
+        const todayData = await fetchDailyEnergyData(today);
+        updateHourlyData(todayData);
+        setWeeklyData([todayData]);
       } else if (period === 'week') {
-        // Full week refresh
-        setWeeklyConsumptionData(generateWeeklyConsumptionData());
+        // Start from 6 days ago for 'week' view
+        startDate.setDate(today.getDate() - 6);
+        const weekData = await fetchWeeklyEnergyData(startDate);
+        updateWeeklyData(weekData);
+        // Use the last day (today) for hourly view
+        if (weekData.length > 0) {
+          updateHourlyData(weekData[weekData.length - 1]);
+        }
+        setWeeklyData(weekData);
       } else if (period === 'month') {
-        // For month view, keep using weekly data but with more variation
-        // In a real app, this would fetch monthly data
-        const updatedWeeklyData = generateWeeklyConsumptionData();
-        setWeeklyConsumptionData(updatedWeeklyData);
+        // Start from 29 days ago for 'month' view
+        startDate.setDate(today.getDate() - 29);
+        // We'll use the weekly fetch but create multiple requests to get a month
+        const weekData1 = await fetchWeeklyEnergyData(startDate);
+        
+        // Get second set (starting 3 weeks ago)
+        startDate.setDate(today.getDate() - 21);
+        const weekData2 = await fetchWeeklyEnergyData(startDate);
+        
+        // Get third set (starting 2 weeks ago)
+        startDate.setDate(today.getDate() - 14);
+        const weekData3 = await fetchWeeklyEnergyData(startDate);
+        
+        // Get fourth set (starting 1 week ago)
+        startDate.setDate(today.getDate() - 7);
+        const weekData4 = await fetchWeeklyEnergyData(startDate);
+        
+        // Combine and avoid duplicates (by date)
+        const allData = [...weekData1, ...weekData2, ...weekData3, ...weekData4];
+        const uniqueDates = new Set();
+        const uniqueData = allData.filter(day => {
+          if (uniqueDates.has(day.date)) return false;
+          uniqueDates.add(day.date);
+          return true;
+        });
+        
+        // Use last 30 days
+        const monthData = uniqueData.slice(-30);
+        updateWeeklyData(monthData);
+        
+        // Use today for hourly view
+        const todayData = monthData.find(day => day.date === today.toISOString().split('T')[0]);
+        if (todayData) {
+          updateHourlyData(todayData);
+        }
+        
+        setWeeklyData(monthData);
       }
+      
+      // Get usage breakdown data
+      const breakdownData = await fetchEnergyBreakdown();
+      setUsageBreakdown(breakdownData);
+      
     } catch (error) {
       console.error('Error loading energy data:', error);
     } finally {
@@ -277,7 +336,7 @@ export default function EnergyDetailsScreen() {
                   style={[
                     styles.breakdownBar, 
                     { 
-                      height: (item.percentage / 100) * 140,
+                      height: `${item.percentage}%`,
                       backgroundColor: item.color 
                     }
                   ]} 
@@ -300,6 +359,53 @@ export default function EnergyDetailsScreen() {
     return '#22C55E'; // Green for low usage
   };
 
+  // Enhanced animations for a more futuristic feel
+  useEffect(() => {
+    // Pulse animation for real-time data with enhanced effect
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.08,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Staggered fade-in and slide animations for a more dynamic entry
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      })
+    ]).start();
+    
+    // Rotate animation for refresh icon
+    Animated.loop(
+      Animated.timing(rotateAnim, {
+        toValue: 1,
+        duration: 2000,
+        useNativeDriver: true,
+      })
+    ).start();
+  }, []);
+
   if (!user) {
     router.replace('/auth');
     return null;
@@ -307,99 +413,216 @@ export default function EnergyDetailsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <TouchableOpacity 
-            style={[styles.backButton, { backgroundColor: isDark ? colors.elevated : 'transparent' }]}
-            onPress={() => router.back()}
-          >
-            <ArrowLeft size={24} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Energy Tracker</Text>
-          <View style={{ width: 24 }} /> {/* Empty view for balance */}
-        </View>
+      {/* Enhanced Header with Gradient */}
+      <LinearGradient
+        colors={isDark ? ['#1E3A8A', '#3B82F6'] : ['#3B82F6', '#60A5FA']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.header}
+      >
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <ArrowLeft size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Energy Dashboard</Text>
+      </LinearGradient>
 
-        <View style={[styles.periodSelector, { backgroundColor: colors.card }]}>
-          <TouchableOpacity
+      {/* Enhanced Real-time indicator with animation */}
+      <Animated.View 
+        style={[
+          styles.realTimeContainer, 
+          { 
+            backgroundColor: colors.card,
+            transform: [{ scale: pulseAnim }],
+            opacity: fadeAnim,
+            translateY: slideAnim
+          }
+        ]}
+      >
+        <LinearGradient
+          colors={isDark ? ['#0F172A', '#1E293B'] : ['#FFFFFF', '#F8FAFC']}
+          style={styles.realTimeGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={styles.realTimeRow}>
+            <View>
+              <Text style={[styles.realTimeLabel, { color: colors.secondaryText }]}>Current Usage</Text>
+              <Text style={[styles.realTimeValue, { color: colors.text }]}>
+                {realTimeUsage.toFixed(2)} <Text style={styles.realTimeUnit}>kWh</Text>
+              </Text>
+            </View>
+            <View style={[styles.liveBadge, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7' }]}>
+              <Animated.View style={[styles.liveDot, { transform: [{ scale: pulseAnim }] }]} />
+              <Text style={[styles.liveText, { color: isDark ? '#10B981' : '#065F46' }]}>LIVE</Text>
+            </View>
+          </View>
+        </LinearGradient>
+      </Animated.View>
+      
+      {/* Enhanced Period Selector with animations */}
+      <Animated.View 
+        style={[
+          styles.periodSelector,
+          { 
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }] 
+          }
+        ]}
+      >
+        <TouchableOpacity
+          style={[
+            styles.periodButton,
+            period === 'day' && [styles.activePeriod, { backgroundColor: isDark ? colors.primary + '30' : colors.primary + '15' }],
+          ]}
+          onPress={() => setPeriod('day')}
+        >
+          <Text
             style={[
-              styles.periodButton, 
-              period === 'day' && [
-                styles.activePeriod, 
-                { backgroundColor: colors.primary }
-              ]
+              styles.periodText,
+              { color: colors.text },
+              period === 'day' && { color: colors.primary, fontWeight: 'bold' },
             ]}
-            onPress={() => setPeriod('day')}
           >
-            <Text 
-              style={[
-                styles.periodButtonText, 
-                { color: colors.secondaryText },
-                period === 'day' && { color: 'white' }
-              ]}
-            >
-              Day
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.periodButton, 
-              period === 'week' && [
-                styles.activePeriod, 
-                { backgroundColor: colors.primary }
-              ]
-            ]}
-            onPress={() => setPeriod('week')}
-          >
-            <Text 
-              style={[
-                styles.periodButtonText, 
-                { color: colors.secondaryText },
-                period === 'week' && { color: 'white' }
-              ]}
-            >
-              Week
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.periodButton, 
-              period === 'month' && [
-                styles.activePeriod, 
-                { backgroundColor: colors.primary }
-              ]
-            ]}
-            onPress={() => setPeriod('month')}
-          >
-            <Text 
-              style={[
-                styles.periodButtonText, 
-                { color: colors.secondaryText },
-                period === 'month' && { color: 'white' }
-              ]}
-            >
-              Month
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={[styles.chartCard, { backgroundColor: colors.card }]}>
-          <Text style={[styles.chartTitle, { color: colors.text }]}>
-            Energy Consumption ({period === 'day' ? 'Hourly' : period === 'week' ? 'Daily' : 'Weekly'})
+            Day
           </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.periodButton,
+            period === 'week' && [styles.activePeriod, { backgroundColor: isDark ? colors.primary + '30' : colors.primary + '15' }],
+          ]}
+          onPress={() => setPeriod('week')}
+        >
+          <Text
+            style={[
+              styles.periodText,
+              { color: colors.text },
+              period === 'week' && { color: colors.primary, fontWeight: 'bold' },
+            ]}
+          >
+            Week
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.periodButton,
+            period === 'month' && [styles.activePeriod, { backgroundColor: isDark ? colors.primary + '30' : colors.primary + '15' }],
+          ]}
+          onPress={() => setPeriod('month')}
+        >
+          <Text
+            style={[
+              styles.periodText,
+              { color: colors.text },
+              period === 'month' && { color: colors.primary, fontWeight: 'bold' },
+            ]}
+          >
+            Month
+          </Text>
+        </TouchableOpacity>
+      </Animated.View>
+
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.secondaryText }]}>
+            Loading energy data...
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Enhanced AI Insights Button with gradient */}
+          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }, { scale: scaleAnim }] }}>
+            <TouchableOpacity 
+              style={[styles.insightsButton]}
+              onPress={handleGetInsights}
+            >
+              <LinearGradient
+                colors={isDark ? ['#0F172A', '#1E293B'] : ['#FFFFFF', '#F8FAFC']}
+                style={styles.insightsGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <View style={styles.insightsButtonContent}>
+                  <View style={[styles.insightsIconContainer, { 
+                    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)' 
+                  }]}>
+                    <Lightbulb size={22} color={colors.primary} />
+                  </View>
+                  <View style={styles.insightsTextContainer}>
+                    <Text style={[styles.insightsTitle, { color: colors.text }]}>
+                      AI Energy Insights
+                    </Text>
+                    <Text style={[styles.insightsSubtitle, { color: colors.secondaryText }]}>
+                      Get personalized recommendations
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.insightsArrow}>
+                  <ChevronRight size={20} color={colors.primary} />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* Rest of your components... */}
           
-          {loading ? (
-            <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
-          ) : (
-            <View style={styles.customChartContainer}>
-              <View style={styles.customYAxis}>
-                <Text style={[styles.axisLabel, { color: colors.secondaryText }]}>100 kWh</Text>
-                <Text style={[styles.axisLabel, { color: colors.secondaryText }]}>75 kWh</Text>
-                <Text style={[styles.axisLabel, { color: colors.secondaryText }]}>50 kWh</Text>
-                <Text style={[styles.axisLabel, { color: colors.secondaryText }]}>25 kWh</Text>
-                <Text style={[styles.axisLabel, { color: colors.secondaryText }]}>0 kWh</Text>
+          {/* Energy statistics cards */}
+          <View style={styles.statsContainer}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Energy Statistics</Text>
+            <View style={styles.statsRow}>
+              <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+                <View style={[styles.statIconContainer, { backgroundColor: isDark ? 'rgba(34, 197, 94, 0.2)' : '#DCFCE7' }]}>
+                  <Calendar size={20} color="#22C55E" />
+                </View>
+                <Text style={[styles.statValue, { color: colors.text }]}>{statistics.averageDaily} kWh</Text>
+                <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Avg. Daily</Text>
               </View>
               
-              <View style={styles.barsContainer}>
+              <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+                <View style={[styles.statIconContainer, { backgroundColor: isDark ? 'rgba(34, 197, 94, 0.2)' : '#DCFCE7' }]}>
+                  <Zap size={20} color="#22C55E" />
+                </View>
+                <Text style={[styles.statValue, { color: colors.text }]}>{statistics.totalMonthly} kWh</Text>
+                <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Monthly Total</Text>
+              </View>
+              
+              <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+                <View style={[styles.statIconContainer, { backgroundColor: isDark ? 'rgba(34, 197, 94, 0.2)' : '#DCFCE7' }]}>
+                  <Clock size={20} color="#22C55E" />
+                </View>
+                <Text style={[styles.statValue, { color: colors.text }]}>{statistics.peakTime}</Text>
+                <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Peak Usage</Text>
+              </View>
+              
+              <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+                <View style={[styles.statIconContainer, { backgroundColor: isDark ? 'rgba(34, 197, 94, 0.2)' : '#DCFCE7' }]}>
+                  {statistics.trend < 0 ? (
+                    <TrendingDown size={20} color="#22C55E" />
+                  ) : (
+                    <TrendingUp size={20} color="#EF4444" />
+                  )}
+                </View>
+                <Text style={[styles.statValue, { color: colors.text }]}>
+                  {statistics.trend > 0 ? '+' : ''}{statistics.trend}%
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.secondaryText }]}>vs. Previous</Text>
+              </View>
+            </View>
+          </View>
+          
+          {/* Energy usage chart */}
+          <View style={[styles.chartContainer, { backgroundColor: colors.card }]}>
+            <Text style={[styles.chartTitle, { color: colors.text }]}>Energy Consumption</Text>
+            
+            <View style={styles.chartContent}>
+              <View style={styles.barContainer}>
                 {energyData.labels.map((label, index) => {
                   const value = energyData.datasets[0].data[index];
                   const maxValue = Math.max(...energyData.datasets[0].data);
@@ -409,14 +632,14 @@ export default function EnergyDetailsScreen() {
                     <View key={index} style={styles.barColumn}>
                       <View style={styles.barAndValue}>
                         <Text style={[styles.valueLabel, { color: colors.text }]}>
-                          {value}
+                          {Math.round(value)}
                         </Text>
                         <View style={styles.barBackground}>
                           <View 
                             style={[
                               styles.barFill, 
                               { 
-                                height: heightPercentage,
+                                height: `${heightPercentage}%`,
                                 backgroundColor: getBarColor(value, maxValue),
                               }
                             ]} 
@@ -433,143 +656,133 @@ export default function EnergyDetailsScreen() {
                 })}
               </View>
             </View>
-          )}
-        </View>
-
-        <View style={styles.statsGrid}>
-          <View style={[styles.statCard, { backgroundColor: colors.card }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: isDark ? 'rgba(34, 197, 94, 0.2)' : '#DCFCE7' }]}>
-              <Calendar size={20} color="#22C55E" />
-            </View>
-            <Text style={[styles.statValue, { color: colors.text }]}>{statistics.averageDaily} kWh</Text>
-            <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Avg. Daily</Text>
           </View>
           
-          <View style={[styles.statCard, { backgroundColor: colors.card }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: isDark ? 'rgba(34, 197, 94, 0.2)' : '#DCFCE7' }]}>
-              <Zap size={20} color="#22C55E" />
-            </View>
-            <Text style={[styles.statValue, { color: colors.text }]}>{statistics.totalMonthly} kWh</Text>
-            <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Monthly Total</Text>
-          </View>
-          
-          <View style={[styles.statCard, { backgroundColor: colors.card }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: isDark ? 'rgba(34, 197, 94, 0.2)' : '#DCFCE7' }]}>
-              <Clock size={20} color="#22C55E" />
-            </View>
-            <Text style={[styles.statValue, { color: colors.text }]}>{statistics.peakTime}</Text>
-            <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Peak Usage</Text>
-          </View>
-          
-          <View style={[styles.statCard, { backgroundColor: colors.card }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: isDark ? 'rgba(34, 197, 94, 0.2)' : '#DCFCE7' }]}>
-              {statistics.trend < 0 ? (
-                <TrendingDown size={20} color="#22C55E" />
-              ) : (
-                <TrendingUp size={20} color="#EF4444" />
-              )}
-            </View>
-            <Text 
-              style={[
-                styles.statValue, 
-                { color: statistics.trend < 0 ? '#22C55E' : '#EF4444' },
-                { color: colors.text }
-              ]}
-            >
-              {statistics.trend}%
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.secondaryText }]}>vs. Last Period</Text>
-          </View>
-        </View>
-
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Hourly Consumption</Text>
-        <View style={[styles.chartCard, { backgroundColor: colors.card }]}>
-          <View style={styles.hourlyChartContainer}>
-            <View style={styles.hourlyChartHeader}>
-              <Text style={[styles.hourlyChartTitle, { color: colors.text }]}>Live Power Usage</Text>
-              <View style={styles.liveIndicatorContainer}>
-                <View style={styles.liveDot} />
-                <Text style={[styles.liveText, { color: colors.secondaryText }]}>Live</Text>
+          {/* Hourly usage chart */}
+          <View style={[styles.chartCard, { backgroundColor: colors.card }]}>
+            <View style={styles.hourlyChartContainer}>
+              <View style={styles.hourlyChartHeader}>
+                <Text style={[styles.hourlyChartTitle, { color: colors.text }]}>Today's Usage by Hour</Text>
+                <View style={styles.liveIndicatorContainer}>
+                  <View style={styles.liveDot} />
+                  <Text style={[styles.liveText, { color: colors.secondaryText }]}>Today</Text>
+                </View>
               </View>
-            </View>
-            
-            <View style={styles.hourlyChartBody}>
-              {hourlyData.datasets[0].data.map((value, index) => {
-                const maxValue = Math.max(...hourlyData.datasets[0].data);
-                const heightPercentage = (value / maxValue) * 100;
-                return (
-                  <View key={index} style={styles.hourlyBarColumn}>
-                    <View style={styles.hourlyBarContainer}>
-                      <Text style={[styles.hourlyValueLabel, { color: colors.text }]}>
-                        {Math.round(value)} kWh
-                      </Text>
-                      <View style={[styles.hourlyBarBg, { backgroundColor: isDark ? 'rgba(75, 85, 99, 0.2)' : '#F3F4F6' }]}>
-                        <View 
-                          style={[
-                            styles.hourlyBarFill, 
-                            { 
-                              height: heightPercentage,
-                              backgroundColor: '#3B82F6',
-                            }
-                          ]} 
-                        >
-                          <View style={styles.pulsingDot} />
+              
+              <View style={styles.hourlyChartBody}>
+                {hourlyData.datasets[0].data.map((value, index) => {
+                  const maxValue = Math.max(...hourlyData.datasets[0].data);
+                  const heightPercentage = (value / maxValue) * 100;
+                  return (
+                    <View key={index} style={styles.hourlyBarColumn}>
+                      <View style={styles.hourlyBarContainer}>
+                        <Text style={[styles.hourlyValueLabel, { color: colors.text }]}>
+                          {Math.round(value)} kWh
+                        </Text>
+                        <View style={[styles.hourlyBarBg, { backgroundColor: isDark ? 'rgba(75, 85, 99, 0.2)' : '#F3F4F6' }]}>
+                          <View 
+                            style={[
+                              styles.hourlyBarFill, 
+                              { 
+                                height: `${heightPercentage}%`,
+                                backgroundColor: '#3B82F6',
+                              }
+                            ]} 
+                          >
+                            <View style={styles.pulsingDot} />
+                          </View>
                         </View>
+                        <Text style={[styles.hourlyTimeLabel, { color: colors.secondaryText }]}>
+                          {hourlyData.labels[index]}
+                        </Text>
                       </View>
-                      <Text style={[styles.hourlyTimeLabel, { color: colors.secondaryText }]}>
-                        {hourlyData.labels[index]}
-                      </Text>
                     </View>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+          
+          {/* Usage breakdown */}
+          {renderBreakdownChart()}
+          
+          {/* Environmental impact section */}
+          <View style={[styles.impactContainer, { backgroundColor: isDark ? '#064E3B' : '#ECFDF5' }]}>
+            <Text style={[styles.impactTitle, { color: isDark ? '#FFFFFF' : '#065F46' }]}>
+              Environmental Impact
+            </Text>
+            <Text style={[styles.impactDescription, { color: isDark ? '#D1FAE5' : '#047857' }]}>
+              Your energy efficiency efforts have saved the equivalent of:
+            </Text>
+            
+            <View style={styles.impactMetrics}>
+              <View style={styles.impactMetric}>
+                <Text style={[styles.impactValue, { color: isDark ? '#FFFFFF' : '#065F46' }]}>
+                  {animatedCO2.toFixed(1)} kg
+                </Text>
+                <Text style={[styles.impactLabel, { color: isDark ? '#D1FAE5' : '#047857' }]}>
+                  CO₂ Emissions
+                </Text>
+              </View>
+              
+              <View style={styles.impactMetric}>
+                <Text style={[styles.impactValue, { color: isDark ? '#FFFFFF' : '#065F46' }]}>
+                  {Math.round(animatedCO2 / 20)} trees
+                </Text>
+                <Text style={[styles.impactLabel, { color: isDark ? '#D1FAE5' : '#047857' }]}>
+                  Monthly Absorption
+                </Text>
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+      )}
+      
+      {/* Enhanced AI Insights Modal with gradient background */}
+      <Modal
+        visible={insightsModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setInsightsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer]}>
+            <LinearGradient
+              colors={isDark ? ['#0F172A', '#1E293B'] : ['#FFFFFF', '#F8FAFC']}
+              style={styles.modalGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>AI Energy Insights</Text>
+                <TouchableOpacity
+                  style={[styles.closeButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#F3F4F6' }]}
+                  onPress={() => setInsightsModalVisible(false)}
+                >
+                  <X size={24} color={isDark ? '#FFFFFF' : colors.secondaryText} />
+                </TouchableOpacity>
+              </View>
+              
+              {insightsLoading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={[styles.loadingText, { color: colors.secondaryText }]}>
+                    Analyzing your energy usage patterns...
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView style={styles.modalContent}>
+                  <View style={styles.insightsTextContainer}>
+                    <Text style={[styles.insightsText, { color: colors.text, lineHeight: 24 }]}>
+                      {aiInsights}
+                    </Text>
                   </View>
-                );
-              })}
-            </View>
+                </ScrollView>
+              )}
+            </LinearGradient>
           </View>
         </View>
-
-        {renderBreakdownChart()}
-
-        <View style={[styles.insightsCard, { backgroundColor: colors.card }]}>
-          <Text style={[styles.insightsTitle, { color: colors.text }]}>Insights & Recommendations</Text>
-          
-          <View style={styles.insightItem}>
-            <View style={[styles.insightDot, { backgroundColor: '#22C55E' }]} />
-            <Text style={[styles.insightText, { color: colors.secondaryText }]}>
-              Your energy usage is 8% lower than last week. Great progress!
-            </Text>
-          </View>
-          
-          <View style={styles.insightItem}>
-            <View style={[styles.insightDot, { backgroundColor: '#F59E0B' }]} />
-            <Text style={[styles.insightText, { color: colors.secondaryText }]}>
-              Your peak usage is between 6-8 PM. Consider shifting some activities to off-peak hours.
-            </Text>
-          </View>
-          
-          <View style={styles.insightItem}>
-            <View style={[styles.insightDot, { backgroundColor: '#3B82F6' }]} />
-            <Text style={[styles.insightText, { color: colors.secondaryText }]}>
-              Heating accounts for 35% of your energy usage. Consider lowering your thermostat by 1-2 degrees.
-            </Text>
-          </View>
-          
-          <View style={[styles.carbonSaved, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
-            <Text style={[styles.carbonSavedText, { color: isDark ? '#34D399' : '#065F46' }]}>
-              🌿 Your energy savings this month have reduced CO2 emissions by <Text style={styles.carbonValue}>{animatedCO2}</Text> kg!
-            </Text>
-            <View style={styles.carbonGraph}>
-              <View style={styles.carbonBarContainer}>
-                <View style={[styles.carbonBar, { width: Math.min(100, (animatedCO2 / 150) * 100) }]} />
-              </View>
-              <View style={styles.carbonLabels}>
-                <Text style={[styles.carbonLabel, { color: isDark ? '#34D399' : '#065F46' }]}>0</Text>
-                <Text style={[styles.carbonLabel, { color: isDark ? '#34D399' : '#065F46' }]}>75</Text>
-                <Text style={[styles.carbonLabel, { color: isDark ? '#34D399' : '#065F46' }]}>150 kg</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-      </ScrollView>
+      </Modal>
     </View>
   );
 }
@@ -579,58 +792,309 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 60,
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingBottom: 24,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
     marginBottom: 24,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
-    color: '#111827',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    flex: 1,
+    marginRight: 40, // Balance the back button
   },
   periodSelector: {
     flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
+    backgroundColor: 'rgba(243, 244, 246, 0.8)',
+    borderRadius: 16,
+    marginHorizontal: 20,
     marginBottom: 24,
     padding: 4,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   periodButton: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 10,
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: 12,
   },
   activePeriod: {
     backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
-  periodButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
+  periodText: {
+    fontSize: 15,
+    fontWeight: '600',
     color: '#6B7280',
   },
-  activePeriodText: {
+  realTimeContainer: {
+    borderRadius: 20,
+    marginHorizontal: 20,
+    marginBottom: 24,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  realTimeGradient: {
+    borderRadius: 20,
+    padding: 20,
+    overflow: 'hidden',
+  },
+  realTimeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  realTimeLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  realTimeValue: {
+    fontSize: 28,
+    fontWeight: '700',
     color: '#111827',
+  },
+  realTimeUnit: {
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    backgroundColor: '#DCFCE7',
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  liveDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#10B981',
+    marginRight: 6,
+  },
+  liveText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#065F46',
+  },
+  scrollView: {
+    paddingBottom: 40,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  statsContainer: {
+    borderRadius: 20,
+    padding: 20,
+    marginHorizontal: 20,
+    marginBottom: 24,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  statCard: {
+    width: '48%',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 5,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  statIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  chartContainer: {
+    borderRadius: 20,
+    padding: 20,
+    marginHorizontal: 20,
+    marginBottom: 24,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  chartTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  chartContent: {
+    flexDirection: 'row',
+    height: 200,
+    alignItems: 'flex-end',
+  },
+  barContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+  },
+  barColumn: {
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: '100%',
+    flex: 1,
+  },
+  barAndValue: {
+    height: 180,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  valueLabel: {
+    fontSize: 10,
+    marginBottom: 2,
+    fontWeight: '500',
+  },
+  barBackground: {
+    width: 16,
+    height: '100%',
+    backgroundColor: 'rgba(229, 231, 235, 0.3)',
+    borderRadius: 4,
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+  },
+  barFill: {
+    width: '100%',
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 4,
+  },
+  barLabel: {
+    fontSize: 10,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  liveIndicator: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#FFFFFF',
+    opacity: 0.8,
   },
   chartCard: {
     backgroundColor: '#FFFFFF',
@@ -642,180 +1106,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 15,
     elevation: 2,
-  },
-  chartTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  loader: {
-    marginVertical: 60,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-  },
-  statCard: {
-    width: '48%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 1,
-  },
-  statIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 16,
-  },
-  breakdownContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 15,
-    elevation: 2,
-  },
-  breakdownTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  breakdownChart: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    height: 200,
-    alignItems: 'flex-end',
-  },
-  breakdownItem: {
-    alignItems: 'center',
-    width: '22%',
-  },
-  breakdownBarContainer: {
-    height: 140,
-    width: '50%',
-    justifyContent: 'flex-end',
-  },
-  breakdownBar: {
-    width: '100%',
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 4,
-  },
-  breakdownPercentage: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-    marginTop: 8,
-  },
-  breakdownCategory: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 4,
-  },
-  insightsCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 15,
-    elevation: 2,
-  },
-  insightsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 16,
-  },
-  insightItem: {
-    flexDirection: 'row',
-    marginBottom: 12,
-    alignItems: 'flex-start',
-  },
-  insightDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginTop: 6,
-    marginRight: 8,
-  },
-  insightText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#4B5563',
-    lineHeight: 20,
-  },
-  carbonSaved: {
-    borderRadius: 10,
-    padding: 16,
-    marginTop: 8,
-  },
-  carbonSavedText: {
-    fontSize: 14,
-    color: '#065F46',
-    marginBottom: 12,
-  },
-  carbonValue: {
-    fontWeight: 'bold',
-  },
-  carbonGraph: {
-    marginTop: 8,
-  },
-  carbonBarContainer: {
-    height: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  carbonBar: {
-    height: '100%',
-    backgroundColor: '#10B981',
-    borderRadius: 4,
-  },
-  carbonLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 4,
-  },
-  carbonLabel: {
-    fontSize: 10,
-    color: '#065F46',
   },
   hourlyChartContainer: {
     padding: 10,
@@ -891,72 +1181,213 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     opacity: 0.7,
   },
-  customChartContainer: {
-    height: 220,
-    marginVertical: 10,
+  breakdownContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 15,
+    elevation: 2,
+  },
+  breakdownTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  breakdownChart: {
     flexDirection: 'row',
-  },
-  customYAxis: {
-    width: 50,
-    height: '100%',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    paddingRight: 5,
-    paddingVertical: 10,
-  },
-  axisLabel: {
-    fontSize: 10,
-    color: '#6B7280',
-  },
-  barsContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
     justifyContent: 'space-around',
-    paddingVertical: 10,
+    height: 200,
+    alignItems: 'flex-end',
   },
-  barColumn: {
+  breakdownItem: {
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    height: '100%',
-    flex: 1,
+    width: '22%',
   },
-  barAndValue: {
-    height: 180,
-    alignItems: 'center',
+  breakdownBarContainer: {
+    height: 140,
+    width: '50%',
     justifyContent: 'flex-end',
   },
-  valueLabel: {
-    fontSize: 10,
-    marginBottom: 2,
-    fontWeight: '500',
-  },
-  barBackground: {
-    width: 16,
-    height: '100%',
-    backgroundColor: 'rgba(229, 231, 235, 0.3)',
-    borderRadius: 4,
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-  },
-  barFill: {
+  breakdownBar: {
     width: '100%',
     borderTopLeftRadius: 4,
     borderTopRightRadius: 4,
   },
-  barLabel: {
-    fontSize: 10,
-    marginTop: 6,
-    textAlign: 'center',
+  breakdownPercentage: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+    marginTop: 8,
   },
-  liveIndicator: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#FFFFFF',
-    opacity: 0.8,
+  breakdownCategory: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
   },
-}); 
+  insightsButton: {
+    borderRadius: 16,
+    marginHorizontal: 20,
+    marginBottom: 24,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  insightsGradient: {
+    padding: 20,
+    borderRadius: 16,
+  },
+  insightsButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  insightsIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  insightsTextContainer: {
+    flex: 1,
+  },
+  insightsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  insightsSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  insightsArrow: {
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  modalContainer: {
+    borderRadius: 20,
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '85%',
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.25,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 10,
+      },
+    }),
+  },
+  modalGradient: {
+    padding: 24,
+    borderRadius: 20,
+    height: '100%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    flex: 1,
+  },
+  insightsText: {
+    fontSize: 16,
+    color: '#4B5563',
+    lineHeight: 24,
+    paddingBottom: 20,
+  },
+  impactContainer: {
+    borderRadius: 20,
+    padding: 20,
+    marginHorizontal: 20,
+    marginBottom: 24,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  impactTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 16,
+  },
+  impactDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  impactMetrics: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 20,
+  },
+  impactMetric: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 16,
+    padding: 16,
+    minWidth: '40%',
+  },
+  impactValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  impactLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+});
