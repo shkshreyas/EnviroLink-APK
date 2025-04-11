@@ -48,6 +48,7 @@
         "backgroundColor": "#0F172A"
       },
       "permissions": [
+        "INTERNET",
         "INTERNET"
       ]
     },
@@ -55,7 +56,8 @@
       "assets/images/*"
     ],
     "updates": {
-      "fallbackToCacheTimeout": 0
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/3d73a621-81e5-4839-91d0-59444350edcd"
     },
     "runtimeVersion": {
       "policy": "appVersion"

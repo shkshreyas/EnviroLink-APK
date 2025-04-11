@@ -43,6 +43,7 @@
     "expo-status-bar": "^2.0.1",
     "expo-symbols": "^0.2.2",
     "expo-system-ui": "~4.0.9",
+    "expo-updates": "^0.27.4",
     "expo-web-browser": "^14.0.2",
     "lucide-react-native": "^0.475.0",
     "react": "18.3.1",
@@ -60,9 +61,9 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~18.3.12",
-    "sharp": "^0.34.0",
-    "typescript": "^5.3.3",
     "eslint": "^8.57.0",
-    "eslint-config-expo": "~8.0.1"
+    "eslint-config-expo": "~8.0.1",
+    "sharp": "^0.34.0",
+    "typescript": "^5.3.3"
   }
 }
