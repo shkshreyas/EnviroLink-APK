@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,14 +9,11 @@ import {
   ActivityIndicator,
   Dimensions,
   RefreshControl,
-  Animated,
-  Platform,
 } from 'react-native';
 import { useAuth } from '@/context/auth';
 import { useTheme } from '@/context/theme';
 import { useRouter } from 'expo-router';
 import { BarChart } from 'react-native-chart-kit';
-import { LinearGradient } from 'expo-linear-gradient';
 import {
   Leaf,
   MessageCircle,
@@ -25,16 +22,8 @@ import {
   BarChart3,
   Settings,
   LogOut,
-  Camera,
-  Scan,
-  Zap,
-  Star,
-  Sparkles,
-  ChevronRight,
 } from 'lucide-react-native';
 import { supabase, fetchUserProfile } from '@/lib/supabase';
-import { BlurView } from 'expo-blur';
-import CameraSustainabilityAnalysis from '@/components/energy/CameraSustainabilityAnalysis';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -91,49 +80,10 @@ export default function HomeScreen() {
     },
   ]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [cameraModalVisible, setCameraModalVisible] = useState(false);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const tipRefs = useRef<Animated.Value[]>([]);
 
   useEffect(() => {
     fetchUserData();
   }, []);
-
-  useEffect(() => {
-    // Pulse animation for camera button
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.2,
-          duration: 1500,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1500,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-  }, []);
-
-  useEffect(() => {
-    if (tips.length > 0 && !tipRefs.current.length) {
-      tipRefs.current = tips.map(() => new Animated.Value(0));
-      
-      // Create staggered animation
-      Animated.stagger(
-        150,
-        tipRefs.current.map((anim) =>
-          Animated.timing(anim, {
-            toValue: 1,
-            duration: 500,
-            useNativeDriver: true,
-          })
-        )
-      ).start();
-    }
-  }, [tips]);
 
   const fetchUserData = async () => {
     setLoading(true);
@@ -253,140 +203,122 @@ export default function HomeScreen() {
       >
         <View style={styles.header}>
           <View>
-            <View style={styles.greetingRow}>
-              <View style={styles.activeDot} />
-              <Text style={[styles.greeting, { color: colors.text }]}>
-                Welcome, {displayName}
-              </Text>
-            </View>
+            <Text style={[styles.greeting, { color: colors.text }]}>
+              Welcome, {displayName}
+            </Text>
             <Text style={[styles.subGreeting, { color: colors.secondaryText }]}>
               Dashboard Overview
             </Text>
           </View>
           <TouchableOpacity
+            style={[styles.profileIcon, { backgroundColor: colors.primary }]}
             onPress={() => router.push('/profile')}
           >
-            <LinearGradient
-              colors={['#3B82F6', '#2563EB']}
-              style={styles.profileIcon}
-            >
-              <Text style={styles.profileInitial}>
-                {displayName[0].toUpperCase()}
-              </Text>
-            </LinearGradient>
+            <Text style={styles.profileInitial}>
+              {displayName[0].toUpperCase()}
+            </Text>
           </TouchableOpacity>
         </View>
 
         {/* Energy Usage Tracker */}
-        <View style={[styles.card]}>
-          <LinearGradient
-            colors={isDark ? ['#1E293B', '#0F172A'] : ['#F8FAFC', '#F1F5F9']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.cardGradient}
-          >
-            <View style={styles.cardHeader}>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>
-                Energy Usage Tracker
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <View style={styles.cardHeader}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>
+              Energy Usage Tracker
+            </Text>
+            <TouchableOpacity
+              style={styles.viewMoreButton}
+              onPress={() => router.push('/energy-details')}
+            >
+              <Text style={[styles.viewMoreText, { color: colors.primary }]}>
+                View More
               </Text>
-              <TouchableOpacity
-                style={[
-                  styles.viewMoreButton,
-                  { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.1)' }
-                ]}
-                onPress={() => router.push('/energy-details')}
+            </TouchableOpacity>
+          </View>
+
+          {loading ? (
+            <ActivityIndicator
+              size="large"
+              color={colors.primary}
+              style={styles.loader}
+            />
+          ) : (
+            <>
+              <Text
+                style={[styles.chartTitle, { color: colors.secondaryText }]}
               >
-                <Text style={[styles.viewMoreText, { color: colors.primary }]}>
-                  View More
-                </Text>
-                <ChevronRight size={16} color={colors.primary} style={{marginLeft: 4}} />
-              </TouchableOpacity>
-            </View>
-
-            {loading ? (
-              <ActivityIndicator
-                size="large"
-                color={colors.primary}
-                style={styles.loader}
-              />
-            ) : (
-              <>
-                <Text
-                  style={[styles.chartTitle, { color: colors.secondaryText }]}
-                >
-                  Weekly Energy Consumption (kWh)
-                </Text>
-                <BarChart
-                  data={energyData}
-                  width={screenWidth - 50}
-                  height={220}
-                  yAxisSuffix=" kWh"
-                  yAxisLabel=""
-                  chartConfig={{
-                    backgroundColor: colors.card,
-                    backgroundGradientFrom: colors.card,
-                    backgroundGradientTo: colors.card,
-                    decimalPlaces: 0,
-                    color: (opacity = 1) => `rgba(34, 197, 94, ${opacity})`,
-                    labelColor: (opacity = 1) =>
-                      isDark
-                        ? `rgba(255, 255, 255, ${opacity})`
-                        : `rgba(71, 85, 105, ${opacity})`,
-                    style: {
-                      borderRadius: 16,
-                    },
-                    barPercentage: 0.7,
-                  }}
-                  style={{
-                    marginVertical: 8,
+                Weekly Energy Consumption (kWh)
+              </Text>
+              <BarChart
+                data={energyData}
+                width={screenWidth - 50}
+                height={220}
+                yAxisSuffix=" kWh"
+                yAxisLabel=""
+                chartConfig={{
+                  backgroundColor: colors.card,
+                  backgroundGradientFrom: colors.card,
+                  backgroundGradientTo: colors.card,
+                  decimalPlaces: 0,
+                  color: (opacity = 1) => `rgba(34, 197, 94, ${opacity})`,
+                  labelColor: (opacity = 1) =>
+                    isDark
+                      ? `rgba(255, 255, 255, ${opacity})`
+                      : `rgba(71, 85, 105, ${opacity})`,
+                  style: {
                     borderRadius: 16,
-                  }}
-                />
+                  },
+                  barPercentage: 0.7,
+                }}
+                style={{
+                  marginVertical: 8,
+                  borderRadius: 16,
+                }}
+              />
 
-                <View style={styles.energyMetrics}>
-                  <View style={styles.energyMetric}>
-                    <Text style={[styles.energyValue, { color: colors.text }]}>
-                      375
-                    </Text>
-                    <Text
-                      style={[
-                        styles.energyLabel,
-                        { color: colors.secondaryText },
-                      ]}
-                    >
-                      kWh Total
-                    </Text>
-                  </View>
-                  <View style={styles.energyMetric}>
-                    <Text style={[styles.energyValue, { color: colors.text }]}>
-                      54
-                    </Text>
-                    <Text
-                      style={[
-                        styles.energyLabel,
-                        { color: colors.secondaryText },
-                      ]}
-                    >
-                      kWh Avg
-                    </Text>
-                  </View>
-                  <View style={styles.energyMetric}>
-                    <Text style={[styles.energyTrend, { color: colors.success }]}>
-                      -12%
-                    </Text>
-                    <Text
-                      style={[
-                        styles.energyLabel,
-                        { color: colors.secondaryText },
-                      ]}
-                    >
-                      vs. Last Week
-                    </Text>
-                  </View>
+              <View style={styles.energyMetrics}>
+                <View style={styles.energyMetric}>
+                  <Text style={[styles.energyValue, { color: colors.text }]}>
+                    375
+                  </Text>
+                  <Text
+                    style={[
+                      styles.energyLabel,
+                      { color: colors.secondaryText },
+                    ]}
+                  >
+                    kWh Total
+                  </Text>
                 </View>
-              </>
-            )}
-          </LinearGradient>
+                <View style={styles.energyMetric}>
+                  <Text style={[styles.energyValue, { color: colors.text }]}>
+                    54
+                  </Text>
+                  <Text
+                    style={[
+                      styles.energyLabel,
+                      { color: colors.secondaryText },
+                    ]}
+                  >
+                    kWh Avg
+                  </Text>
+                </View>
+                <View style={styles.energyMetric}>
+                  <Text style={[styles.energyTrend, { color: colors.success }]}>
+                    -12%
+                  </Text>
+                  <Text
+                    style={[
+                      styles.energyLabel,
+                      { color: colors.secondaryText },
+                    ]}
+                  >
+                    vs. Last Week
+                  </Text>
+                </View>
+              </View>
+            </>
+          )}
         </View>
 
         {/* Drone Prototype Section */}
@@ -441,26 +373,10 @@ export default function HomeScreen() {
         <Text style={[styles.sectionTitle, { color: colors.text }]}>
           Sustainability Tips
         </Text>
-        {tips.map((tip, index) => (
-          <Animated.View
+        {tips.map((tip) => (
+          <View
             key={tip.id}
-            style={[
-              styles.tipCard, 
-              { 
-                backgroundColor: colors.card,
-                opacity: tipRefs.current[index] || 1,
-                transform: [
-                  {
-                    translateY: tipRefs.current[index]
-                      ? tipRefs.current[index].interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [20, 0],
-                        })
-                      : 0,
-                  },
-                ],
-              }
-            ]}
+            style={[styles.tipCard, { backgroundColor: colors.card }]}
           >
             <Text style={[styles.tipTitle, { color: colors.text }]}>
               {tip.title}
@@ -491,51 +407,8 @@ export default function HomeScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
-          </Animated.View>
+          </View>
         ))}
-
-        {/* Resources Section */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>
-          Sustainable Development Resources
-        </Text>
-        <View style={styles.resourcesContainer}>
-          {[
-            {
-              icon: <Leaf size={24} color="#0EA5E9" />,
-              title: "Green Living Guide",
-              route: '/resources/green-living' as const,
-              gradientColors: isDark ? ['rgba(14, 165, 233, 0.2)', 'rgba(14, 165, 233, 0.1)'] : ['#E0F2FE', '#BFDBFE']
-            },
-            {
-              icon: <BarChart3 size={24} color="#F59E0B" />,
-              title: "Energy Saving Tips",
-              route: '/resources/energy-saving' as const,
-              gradientColors: isDark ? ['rgba(245, 158, 11, 0.2)', 'rgba(245, 158, 11, 0.1)'] : ['#FEF3C7', '#FDE68A']
-            },
-            {
-              icon: <Settings size={24} color="#22C55E" />,
-              title: "Carbon Calculator",
-              route: '/resources/carbon-calculator' as const,
-              gradientColors: isDark ? ['rgba(34, 197, 94, 0.2)', 'rgba(34, 197, 94, 0.1)'] : ['#DCFCE7', '#BBF7D0']
-            }
-          ].map((resource, index) => (
-            <TouchableOpacity
-              key={index}
-              style={[styles.resourceCard, { backgroundColor: colors.card }]}
-              onPress={() => router.push(resource.route)}
-            >
-              <LinearGradient
-                colors={resource.gradientColors as [string, string]}
-                style={styles.resourceIcon}
-              >
-                {resource.icon}
-              </LinearGradient>
-              <Text style={[styles.resourceTitle, { color: colors.text }]}>
-                {resource.title}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
 
         {/* Recent Alerts */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>
@@ -595,37 +468,74 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Floating AI Camera Button */}
-        <View style={styles.cameraButtonContainer}>
+        {/* Resources Section */}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          Sustainable Development Resources
+        </Text>
+        <View style={styles.resourcesContainer}>
           <TouchableOpacity
-            style={styles.cameraButton}
-            onPress={() => setCameraModalVisible(true)}
+            style={[styles.resourceCard, { backgroundColor: colors.card }]}
+            onPress={() => router.push('/resources/green-living')}
           >
-            <LinearGradient
-              colors={isDark ? ['#3B82F6', '#2563EB'] : ['#3B82F6', '#1D4ED8']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.cameraGradient}
+            <View
+              style={[
+                styles.resourceIcon,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(14, 165, 233, 0.2)'
+                    : '#E0F2FE',
+                },
+              ]}
             >
-              <Animated.View
-                style={[
-                  styles.cameraIconPulse,
-                  {
-                    transform: [{ scale: pulseAnim }],
-                  },
-                ]}
-              >
-                <Camera size={28} color="#FFFFFF" />
-              </Animated.View>
-            </LinearGradient>
+              <Leaf size={24} color="#0EA5E9" />
+            </View>
+            <Text style={[styles.resourceTitle, { color: colors.text }]}>
+              Green Living Guide
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.resourceCard, { backgroundColor: colors.card }]}
+            onPress={() => router.push('/resources/energy-saving')}
+          >
+            <View
+              style={[
+                styles.resourceIcon,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(245, 158, 11, 0.2)'
+                    : '#FEF3C7',
+                },
+              ]}
+            >
+              <BarChart3 size={24} color="#F59E0B" />
+            </View>
+            <Text style={[styles.resourceTitle, { color: colors.text }]}>
+              Energy Saving Tips
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.resourceCard, { backgroundColor: colors.card }]}
+            onPress={() => router.push('/resources/carbon-calculator')}
+          >
+            <View
+              style={[
+                styles.resourceIcon,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(34, 197, 94, 0.2)'
+                    : '#DCFCE7',
+                },
+              ]}
+            >
+              <Settings size={24} color="#22C55E" />
+            </View>
+            <Text style={[styles.resourceTitle, { color: colors.text }]}>
+              Carbon Calculator
+            </Text>
           </TouchableOpacity>
         </View>
-
-        {/* Camera Sustainability Analysis Modal */}
-        <CameraSustainabilityAnalysis
-          visible={cameraModalVisible}
-          onClose={() => setCameraModalVisible(false)}
-        />
       </ScrollView>
 
       {/* Bottom Navigation */}
@@ -633,9 +543,8 @@ export default function HomeScreen() {
         style={[
           styles.bottomNav,
           {
-            backgroundColor: isDark ? 'rgba(15, 23, 42, 0.8)' : 'rgba(255, 255, 255, 0.8)',
-            backdropFilter: 'blur(10px)',
-            borderTopColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+            backgroundColor: colors.tabBarBackground,
+            borderTopColor: colors.border,
           },
         ]}
       >
@@ -703,32 +612,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
     marginTop: 40,
-    paddingHorizontal: 8,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(99, 102, 241, 0.1)',
-  },
-  greetingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  activeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#10B981',
-    marginRight: 8,
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 5,
   },
   greeting: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 4,
-    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
-    letterSpacing: -0.5,
   },
   subGreeting: {
     fontSize: 16,
@@ -739,10 +627,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 5,
   },
   profileInitial: {
     fontSize: 18,
@@ -754,13 +638,10 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    overflow: 'hidden',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -775,9 +656,6 @@ const styles = StyleSheet.create({
   viewMoreButton: {
     paddingVertical: 4,
     paddingHorizontal: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 8,
   },
   viewMoreText: {
     fontSize: 14,
@@ -792,28 +670,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   energyMetric: {
     alignItems: 'center',
   },
   energyValue: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 4,
-    textShadowColor: 'rgba(59, 130, 246, 0.5)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
   },
   energyTrend: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 4,
-    textShadowColor: 'rgba(34, 197, 94, 0.5)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
   },
   energyLabel: {
     fontSize: 12,
@@ -903,18 +772,15 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   resourceCard: {
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 16,
     width: '31%',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
     shadowRadius: 10,
-    elevation: 5,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    backdropFilter: 'blur(8px)',
+    elevation: 1,
   },
   resourceIcon: {
     width: 48,
@@ -990,39 +856,5 @@ const styles = StyleSheet.create({
   dronePromoImage: {
     width: 120,
     height: 120,
-  },
-  cameraButtonContainer: {
-    position: 'absolute',
-    bottom: 80,
-    right: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 10,
-    zIndex: 999,
-  },
-  cameraButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    overflow: 'hidden',
-  },
-  cameraGradient: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 30,
-  },
-  cameraIconPulse: {
-    width: 60,
-    height: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cardGradient: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 16,
   },
 });

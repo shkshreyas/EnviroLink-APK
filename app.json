@@ -15,12 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.envirolink.app",
-      "infoPlist": {
-        "NSCameraUsageDescription": "This app uses the camera for sustainability analysis",
-        "NSPhotoLibraryUsageDescription": "This app accesses your photos for sustainability analysis",
-        "NSMicrophoneUsageDescription": "This app uses the microphone for video capture"
-      }
+      "bundleIdentifier": "com.envirolink.app"
     },
     "web": {
       "bundler": "metro",
@@ -50,14 +45,10 @@
       "package": "com.envirolink.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#167B68"
+        "backgroundColor": "#0F172A"
       },
       "permissions": [
-        "INTERNET",
-        "CAMERA",
-        "RECORD_AUDIO",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "INTERNET"
       ]
     },
     "assetBundlePatterns": [
